@@ -26,34 +26,58 @@ const FACEBOOK_ACCESS_TOKEN = process.env.FACEBOOK_ACCESS_TOKEN;
 
 const canaisMonitorados = process.env.DISCORD_CHANNEL_ID.split(',').map(id => id.trim());
 
+// =========================================================================
+// O "Limpador" Avançado de formatação do Discord
+// =========================================================================
+function limparTextoDiscord(texto) {
+    if (!texto) return '';
+    let limpo = texto;
+    
+    // 1. Remove menções a cargos ou usuários (ex: <@&1440442360235560993>)
+    limpo = limpo.replace(/<@&?\d+>/g, '');
+    
+    // 2. Remove cabeçalhos do Discord (ex: # Visita em casa!)
+    limpo = limpo.replace(/^#+\s*/gm, '');
+    
+    // 3. Remove blocos de citação (ex: > texto)
+    limpo = limpo.replace(/^>\s*/gm, '');
+    
+    // 4. Remove formatação de texto pequeno (ex: -# link)
+    limpo = limpo.replace(/^-#\s*/gm, '');
+    
+    // 5. Remove negritos e itálicos (ex: **texto**, *texto*)
+    limpo = limpo.replace(/\*\*(.*?)\*\*/gs, '$1');
+    limpo = limpo.replace(/\*(.*?)\*/gs, '$1');
+    limpo = limpo.replace(/_(.*?)_/gs, '$1');
+    
+    // 6. Limpa espaços e quebras de linha em branco que sobram
+    limpo = limpo.replace(/\n{3,}/g, '\n\n');
+    
+    return limpo.trim();
+}
+
 client.once('ready', async () => {
     console.log(`Self-Bot logado na conta: ${client.user.tag}`);
     console.log(`Monitorando ${canaisMonitorados.length} canais silenciosamente...`);
 
     // =========================================================================
-    // ⚠️ INÍCIO DO BLOCO DE TESTE: Puxar a última notícia ao ligar
-    // (APAGUE ESTA PARTE INTEIRA DEPOIS QUE O TESTE DER CERTO NO FACEBOOK)
+    // ⚠️ INÍCIO DO BLOCO DE TESTE
     // =========================================================================
     try {
-        console.log('--- INICIANDO TESTE ---');
-        console.log('Buscando a última mensagem do primeiro canal da lista...');
-        
-        // Pega o ID do primeiro canal que você configurou no .env
+        console.log('--- INICIANDO TESTE COM LIMPADOR DE TEXTO ---');
         const canalTesteId = canaisMonitorados[0]; 
         const canal = await client.channels.fetch(canalTesteId);
-        
-        // Pede para a API do Discord a última (1) mensagem do canal
         const mensagens = await canal.messages.fetch({ limit: 1 });
         const ultimaMensagem = mensagens.first();
 
         if (ultimaMensagem) {
-            console.log(`Última mensagem encontrada! Tentando processar...`);
-            const legendaTeste = ultimaMensagem.content;
+            console.log(`Última mensagem encontrada! Passando pelo filtro...`);
+            
+            // AQUI ESTÁ A MÁGICA: Passamos o texto sujo pelo limpador antes de enviar
+            const legendaTeste = limparTextoDiscord(ultimaMensagem.content);
             const anexoTeste = ultimaMensagem.attachments.first();
 
-            // Teste de Imagem
             if (anexoTeste && anexoTeste.contentType && anexoTeste.contentType.startsWith('image/')) {
-                console.log('A mensagem possui uma imagem. Repassando para a página...');
                 const response = await axios.post(`https://graph.facebook.com/v19.0/${FACEBOOK_PAGE_ID}/photos`, {
                     url: anexoTeste.url,
                     message: legendaTeste,
@@ -61,19 +85,13 @@ client.once('ready', async () => {
                 });
                 console.log(`[TESTE OK] Foto publicada com sucesso! ID: ${response.data.id}`);
             } 
-            // Teste de Texto
             else if (legendaTeste && !anexoTeste) {
-                console.log('A mensagem é apenas texto. Repassando para a página...');
                 const response = await axios.post(`https://graph.facebook.com/v19.0/${FACEBOOK_PAGE_ID}/feed`, {
                     message: legendaTeste,
                     access_token: FACEBOOK_ACCESS_TOKEN
                 });
                 console.log(`[TESTE OK] Texto publicado com sucesso! ID: ${response.data.id}`);
-            } else {
-                console.log('A última mensagem não é foto nem texto (pode ser um vídeo ou aviso do servidor).');
             }
-        } else {
-            console.log('O canal está vazio, nenhuma mensagem encontrada para testar.');
         }
         console.log('--- FIM DO TESTE ---');
     } catch (erro) {
@@ -88,35 +106,35 @@ client.on('messageCreate', async (message) => {
     if (message.author.id === client.user.id) return;
     if (!canaisMonitorados.includes(message.channelId)) return;
 
-    const legenda = message.content;
+    // Também limpa as mensagens reais que chegarem no dia a dia
+    const legendaLimpa = limparTextoDiscord(message.content);
     const anexo = message.attachments.first();
 
     if (anexo && anexo.contentType && anexo.contentType.startsWith('image/')) {
         const urlImagem = anexo.url;
-        console.log(`Nova notícia com imagem detectada no canal ${message.channelId}. Repassando para a página...`);
+        console.log(`Nova notícia detectada no canal ${message.channelId}. Repassando...`);
 
         try {
-            const response = await axios.post(`https://graph.facebook.com/v19.0/${FACEBOOK_PAGE_ID}/photos`, {
+            await axios.post(`https://graph.facebook.com/v19.0/${FACEBOOK_PAGE_ID}/photos`, {
                 url: urlImagem,
-                message: legenda,
+                message: legendaLimpa,
                 access_token: FACEBOOK_ACCESS_TOKEN
             });
-            console.log(`Sucesso! Foto publicada na página. ID: ${response.data.id}`);
+            console.log(`Sucesso! Foto publicada na página.`);
         } catch (error) {
-            console.error('Erro ao postar imagem no Facebook:', error.response ? error.response.data : error.message);
+            console.error('Erro ao postar imagem:', error.response ? error.response.data : error.message);
         }
     } 
-    else if (legenda && !anexo) {
-         console.log(`Nova notícia em texto detectada no canal ${message.channelId}. Repassando para a página...`);
-         
+    else if (legendaLimpa && !anexo) {
+         console.log(`Nova notícia em texto detectada. Repassando...`);
          try {
-            const response = await axios.post(`https://graph.facebook.com/v19.0/${FACEBOOK_PAGE_ID}/feed`, {
-                message: legenda,
+            await axios.post(`https://graph.facebook.com/v19.0/${FACEBOOK_PAGE_ID}/feed`, {
+                message: legendaLimpa,
                 access_token: FACEBOOK_ACCESS_TOKEN
             });
-            console.log(`Sucesso! Texto publicado na página. ID: ${response.data.id}`);
+            console.log(`Sucesso! Texto publicado na página.`);
          } catch (error) {
-             console.error('Erro ao postar texto no Facebook:', error.response ? error.response.data : error.message);
+             console.error('Erro ao postar texto:', error.response ? error.response.data : error.message);
          }
     }
 });
