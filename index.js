@@ -37,8 +37,8 @@ client.once('ready', () => {
 });
 
 client.on('messageCreate', async (message) => {
-    // Evita ler as próprias mensagens caso você digite algo lá
-    if (message.author.id === client.user.id) return;
+    // ⚠️ TRAVA DESLIGADA PARA TESTE: Agora o bot vai ler as suas próprias mensagens
+    // if (message.author.id === client.user.id) return;
 
     // Verifica se o ID do canal da mensagem está dentro da nossa lista de canais monitorados
     if (!canaisMonitorados.includes(message.channelId)) return;
