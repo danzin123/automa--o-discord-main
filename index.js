@@ -27,11 +27,6 @@ const FACEBOOK_ACCESS_TOKEN = process.env.FACEBOOK_ACCESS_TOKEN;
 const canaisMonitorados = process.env.DISCORD_CHANNEL_ID.split(',').map(id => id.trim());
 
 // =========================================================================
-// HASHTAGS PADRÃO DEFINITIVAS
-// =========================================================================
-const HASHTAGS_PADRAO = "\n\n#SantosFC #futebol #Noticias";
-
-// =========================================================================
 // O "Limpador" Avançado de formatação do Discord
 // =========================================================================
 function limparTextoDiscord(texto) {
@@ -51,6 +46,21 @@ function limparTextoDiscord(texto) {
     return limpo.trim();
 }
 
+// =========================================================================
+// Função para postar @followers nos comentários da publicação
+// =========================================================================
+async function postarComentarioSeguidores(postId) {
+    try {
+        await axios.post(`https://graph.facebook.com/v19.0/${postId}/comments`, {
+            message: '@followers',
+            access_token: FACEBOOK_ACCESS_TOKEN
+        });
+        console.log(`Comentário @followers postado na publicação ${postId}.`);
+    } catch (error) {
+        console.error('Erro ao postar comentário @followers:', error.response ? error.response.data : error.message);
+    }
+}
+
 client.once('ready', async () => {
     console.log(`Self-Bot logado na conta: ${client.user.tag}`);
     console.log(`Monitorando ${canaisMonitorados.length} canais silenciosamente...`);
@@ -67,8 +77,8 @@ client.on('messageCreate', async (message) => {
     // 1. Limpa a formatação original do Discord
     const legendaLimpa = limparTextoDiscord(message.content);
     
-    // 2. Adiciona as hashtags escolhidas ao final
-    const legendaFinal = legendaLimpa ? legendaLimpa + HASHTAGS_PADRAO : HASHTAGS_PADRAO.trim();
+    // 2. Legenda final sem hashtags
+    const legendaFinal = legendaLimpa || '';
     
     const anexo = message.attachments.first();
 
@@ -78,12 +88,18 @@ client.on('messageCreate', async (message) => {
         console.log(`Nova notícia com imagem detectada no canal ${message.channelId}. Repassando...`);
 
         try {
-            await axios.post(`https://graph.facebook.com/v19.0/${FACEBOOK_PAGE_ID}/photos`, {
+            const response = await axios.post(`https://graph.facebook.com/v19.0/${FACEBOOK_PAGE_ID}/photos`, {
                 url: urlImagem,
                 message: legendaFinal,
                 access_token: FACEBOOK_ACCESS_TOKEN
             });
             console.log(`Sucesso! Foto publicada na página.`);
+            
+            // Posta @followers nos comentários
+            const postId = response.data.post_id || response.data.id;
+            if (postId) {
+                await postarComentarioSeguidores(postId);
+            }
         } catch (error) {
             console.error('Erro ao postar imagem:', error.response ? error.response.data : error.message);
         }
@@ -92,11 +108,17 @@ client.on('messageCreate', async (message) => {
     else if (legendaFinal && !anexo) {
          console.log(`Nova notícia em texto detectada. Repassando...`);
          try {
-            await axios.post(`https://graph.facebook.com/v19.0/${FACEBOOK_PAGE_ID}/feed`, {
+            const response = await axios.post(`https://graph.facebook.com/v19.0/${FACEBOOK_PAGE_ID}/feed`, {
                 message: legendaFinal,
                 access_token: FACEBOOK_ACCESS_TOKEN
             });
             console.log(`Sucesso! Texto publicado na página.`);
+            
+            // Posta @followers nos comentários
+            const postId = response.data.id;
+            if (postId) {
+                await postarComentarioSeguidores(postId);
+            }
          } catch (error) {
              console.error('Erro ao postar texto:', error.response ? error.response.data : error.message);
          }
