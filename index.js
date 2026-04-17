@@ -27,7 +27,7 @@ const FACEBOOK_ACCESS_TOKEN = process.env.FACEBOOK_ACCESS_TOKEN;
 const canaisMonitorados = process.env.DISCORD_CHANNEL_ID.split(',').map(id => id.trim());
 
 // =========================================================================
-// O "Limpador" Avançado de formatação do Discord
+// O "Limpador" Avançado de formatação do Discord (AGORA SEM HASHTAGS)
 // =========================================================================
 function limparTextoDiscord(texto) {
     if (!texto) return '';
@@ -41,6 +41,12 @@ function limparTextoDiscord(texto) {
     limpo = limpo.replace(/\*\*(.*?)\*\*/gs, '$1');
     limpo = limpo.replace(/\*(.*?)\*/gs, '$1');
     limpo = limpo.replace(/_(.*?)_/gs, '$1');
+    
+    // NOVIDADE: Remove todas as hashtags (ex: #SantosFC, #Noticia) independentemente de onde estejam
+    limpo = limpo.replace(/#\S+/g, '');
+
+    // Limpa espaços duplos e quebras de linha excessivas que ficaram após remover as hashtags
+    limpo = limpo.replace(/[ \t]{2,}/g, ' ');
     limpo = limpo.replace(/\n{3,}/g, '\n\n');
     
     return limpo.trim();
@@ -74,7 +80,7 @@ client.on('messageCreate', async (message) => {
     // Verifica se o canal está na lista de monitorados
     if (!canaisMonitorados.includes(message.channelId)) return;
 
-    // 1. Limpa a formatação original do Discord
+    // 1. Limpa a formatação original do Discord e remove hashtags
     const legendaLimpa = limparTextoDiscord(message.content);
     
     // 2. Legenda final sem hashtags
